@@ -6,11 +6,11 @@ import logging
 import subprocess
 import threading
 from enum import Enum, auto
-from typing import TYPE_CHECKING
 
 from linux_whispr.audio.capture import AudioCapture
 from linux_whispr.audio.vad import SileroVAD
 from linux_whispr.config import AppConfig
+from linux_whispr.dictation import build_stt_backend, build_text_injector
 from linux_whispr.events import EventBus, event_bus
 from linux_whispr.features.adaptive import AdaptiveLearner
 from linux_whispr.features.dictionary import Dictionary
@@ -21,7 +21,6 @@ from linux_whispr.output.clipboard import Clipboard
 from linux_whispr.output.injector import TextInjector
 from linux_whispr.platform.detect import PlatformInfo, detect_platform
 from linux_whispr.stt.base import STTBackend
-from linux_whispr.stt.faster_whisper import FasterWhisperBackend
 from linux_whispr.ui.overlay import Overlay
 
 logger = logging.getLogger(__name__)
@@ -113,13 +112,9 @@ class LinuxWhispr:
         # Initialize STT
         self._stt = self._create_stt_backend()
 
-        # Initialize text injector
-        self._injector = TextInjector(
-            event_bus=self._event_bus,
-            platform=self._platform,
-            preserve_clipboard=self._config.injection.preserve_clipboard,
-            restore_delay=self._config.injection.clipboard_restore_delay,
-            method=self._config.injection.method,
+        # Initialize text injector (shared assembly with the dictation module)
+        self._injector = build_text_injector(
+            self._config, self._platform, self._event_bus
         )
 
         # Initialize features
@@ -163,33 +158,8 @@ class LinuxWhispr:
         logger.info("LinuxWhispr setup complete")
 
     def _create_stt_backend(self) -> STTBackend:
-        """Create the STT backend based on config."""
-        backend = self._config.stt.backend
-
-        if backend == "faster-whisper":
-            return FasterWhisperBackend(
-                model_name=self._config.stt.model,
-                device=self._config.stt.device,
-                compute_type=self._config.stt.compute_type,
-            )
-        elif backend == "openai":
-            from linux_whispr.stt.openai_api import OpenAIWhisperBackend
-
-            # API key should come from secretstorage or env var
-            import os
-
-            api_key = os.environ.get("OPENAI_API_KEY", "")
-            return OpenAIWhisperBackend(api_key=api_key)
-        elif backend == "groq":
-            from linux_whispr.stt.groq_api import GroqWhisperBackend
-
-            import os
-
-            api_key = os.environ.get("GROQ_API_KEY", "")
-            return GroqWhisperBackend(api_key=api_key)
-        else:
-            logger.warning("Unknown STT backend '%s', falling back to faster-whisper", backend)
-            return FasterWhisperBackend(model_name=self._config.stt.model)
+        """Create the STT backend based on config (shared with dictation module)."""
+        return build_stt_backend(self._config)
 
     def _setup_ai_refinement(self) -> None:
         """Setup AI refinement pipeline if enabled."""
@@ -216,9 +186,15 @@ class LinuxWhispr:
         if backend == "openai":
             from linux_whispr.ai.openai_llm import OpenAILLMBackend
 
-            api_key = os.environ.get("OPENAI_API_KEY", "")
+            api_key = (
+                os.environ.get("LITELLM_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
+                or self._config.ai.api_key
+                or "sk-litellm-local"
+            )
             model = self._config.ai.model or "gpt-4o-mini"
-            return OpenAILLMBackend(api_key=api_key, model=model)
+            base_url = self._config.ai.base_url or ""
+            return OpenAILLMBackend(api_key=api_key, model=model, base_url=base_url)
         elif backend == "groq":
             from linux_whispr.ai.groq_llm import GroqLLMBackend
 

@@ -10,19 +10,23 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAILLMBackend(LLMBackend):
-    """LLM backend using OpenAI API (GPT-4o-mini, etc.)."""
+    """LLM backend using OpenAI-compatible API (GPT-4o-mini, LiteLLM, etc.)."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", base_url: str = "") -> None:
         self._api_key = api_key
         self._model = model
+        self._base_url = base_url or None
         self._client: object | None = None
 
     def load(self) -> None:
         """Initialize the OpenAI client."""
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=self._api_key)
-        logger.info("OpenAI LLM client initialized (model=%s)", self._model)
+        kwargs: dict = {"api_key": self._api_key}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        self._client = OpenAI(**kwargs)
+        logger.info("OpenAI LLM client initialized (model=%s, base_url=%s)", self._model, self._base_url)
 
     def generate(self, system_prompt: str, user_prompt: str) -> RefinementResult:
         if self._client is None:

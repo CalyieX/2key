@@ -65,6 +65,8 @@ class AIConfig:
     backend: str = "none"  # "none" | "local" | "openai" | "anthropic" | "groq" | "google"
     model: str = ""
     custom_prompt: str = ""
+    base_url: str = ""  # OpenAI-compatible endpoint, e.g. http://localhost:4000/v1
+    api_key: str = ""   # Fallback key; env LITELLM_API_KEY takes precedence
 
 
 @dataclass
