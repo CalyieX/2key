@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import TYPE_CHECKING
+import pathlib
 
 if TYPE_CHECKING:
     from linux_whispr.config import AppConfig
@@ -198,6 +199,18 @@ class SetupWizard:
             hotkey_page = self._build_hotkey_page()
             carousel.append(hotkey_page)
 
+            # Page 4: AI refinement (BYOK + keyring)
+            ai_page = self._build_ai_page()
+            carousel.append(ai_page)
+
+            # Page 5: VOXD-trick custom-shortcut helper
+            voxd_page = self._build_voxd_page()
+            carousel.append(voxd_page)
+
+            # Page 6: Autostart + Done
+            autostart_page = self._build_autostart_page()
+            carousel.append(autostart_page)
+
             # Page indicator
             indicator = Adw.CarouselIndicatorDots(carousel=carousel)
 
@@ -269,10 +282,130 @@ class SetupWizard:
         hotkey_row = Adw.EntryRow(title="Dictation Hotkey")
         hotkey_row.set_text(self._config.hotkey.dictation)
         group.add(hotkey_row)
+        self._hotkey_row = hotkey_row
 
-        # Done button
-        done_button = Gtk.Button(label="Start Using LinuxWhispr")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.append(page)
+        box.append(group)
+        return box
+
+    # ---------------- New pages added in Phase-2c polish ----------------
+
+    def _build_ai_page(self) -> object:
+        """AI refinement (BYOK). Stores key in libsecret via keyring."""
+        from gi.repository import Adw, Gtk
+
+        page = Adw.StatusPage(
+            title="AI Refinement (optional)",
+            description=(
+                "Improve transcription quality with an AI model.\n"
+                "Your key is stored in the system keyring (libsecret), "
+                "never plain-text on disk."
+            ),
+            icon_name="emblem-system-symbolic",
+        )
+
+        group = Adw.PreferencesGroup()
+
+        enabled_row = Adw.SwitchRow(
+            title="Enable AI refinement",
+            subtitle="Off = STT-only (recommended for first try)",
+            active=self._config.ai.enabled,
+        )
+        group.add(enabled_row)
+        self._ai_enabled_row = enabled_row
+
+        provider_row = Adw.ComboRow(title="Provider")
+        providers = Gtk.StringList.new(["openai", "anthropic", "groq", "litellm"])
+        provider_row.set_model(providers)
+        provider_row.set_selected(0)
+        group.add(provider_row)
+        self._ai_provider_row = provider_row
+
+        key_row = Adw.PasswordEntryRow(title="API Key (stored in keyring)")
+        try:
+            from linux_whispr.secrets import get_api_key, has_keyring
+            if has_keyring():
+                stored = get_api_key("openai", fallback="")
+                if stored:
+                    key_row.set_text(stored)
+        except ImportError:
+            pass
+        group.add(key_row)
+        self._ai_key_row = key_row
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.append(page)
+        box.append(group)
+        return box
+
+    def _build_voxd_page(self) -> object:
+        """VOXD-trick: explain how to set up an OS-level Custom-Shortcut."""
+        from gi.repository import Adw, Gtk
+
+        page = Adw.StatusPage(
+            title="Quick Hotkey via Custom Shortcut",
+            description=(
+                "Recommended: bind a system shortcut to launch K&K Voice.\n\n"
+                "GNOME: Settings > Keyboard > View and Customize Shortcuts > "
+                "Custom Shortcuts > +\n"
+                "KDE: System Settings > Shortcuts > Custom Shortcuts > Edit > New\n\n"
+                "Use this command:"
+            ),
+            icon_name="preferences-desktop-keyboard-symbolic",
+        )
+
+        group = Adw.PreferencesGroup()
+
+        cmd_row = Adw.ActionRow(
+            title="Command",
+            subtitle="kk-voice --trigger-record",
+        )
+        copy_btn = Gtk.Button.new_from_icon_name("edit-copy-symbolic")
+        copy_btn.set_valign(Gtk.Align.CENTER)
+        copy_btn.set_tooltip_text("Copy command to clipboard")
+
+        def on_copy(_btn: object) -> None:
+            clipboard = copy_btn.get_clipboard()
+            clipboard.set("kk-voice --trigger-record")
+
+        copy_btn.connect("clicked", on_copy)
+        cmd_row.add_suffix(copy_btn)
+        group.add(cmd_row)
+
+        info_row = Adw.ActionRow(
+            title="What this does",
+            subtitle="OS-level shortcut > kk-voice --trigger-record > IPC socket > dictation toggle. Zero permissions needed.",
+        )
+        group.add(info_row)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.append(page)
+        box.append(group)
+        return box
+
+    def _build_autostart_page(self) -> object:
+        """Autostart toggle + final Done button."""
+        from gi.repository import Adw, Gtk
+
+        page = Adw.StatusPage(
+            title="Almost done!",
+            description="Start K&K Voice automatically when you log in?",
+            icon_name="emblem-ok-symbolic",
+        )
+
+        group = Adw.PreferencesGroup()
+        autostart_row = Adw.SwitchRow(
+            title="Launch K&K Voice on login",
+            subtitle="Creates ~/.config/autostart/kk-voice.desktop",
+            active=self._autostart_currently_enabled(),
+        )
+        group.add(autostart_row)
+        self._autostart_row = autostart_row
+
+        done_button = Gtk.Button(label="Start Using K&K Voice")
         done_button.add_css_class("suggested-action")
+        done_button.set_margin_top(12)
         done_button.connect("clicked", self._on_wizard_complete)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -281,8 +414,68 @@ class SetupWizard:
         box.append(done_button)
         return box
 
+    def _autostart_currently_enabled(self) -> bool:
+        """Check whether the autostart .desktop entry exists."""
+        autostart = pathlib.Path.home() / ".config/autostart/kk-voice.desktop"
+        return autostart.exists()
+
+    def _apply_autostart(self, enable: bool) -> None:
+        """Create or remove the autostart .desktop entry."""
+        autostart_dir = pathlib.Path.home() / ".config/autostart"
+        autostart_file = autostart_dir / "kk-voice.desktop"
+        if enable:
+            autostart_dir.mkdir(parents=True, exist_ok=True)
+            autostart_file.write_text(
+                "[Desktop Entry]\n"
+                "Type=Application\n"
+                "Name=K&K Voice\n"
+                "Exec=kk-voice\n"
+                "Icon=kk-voice\n"
+                "X-GNOME-Autostart-enabled=true\n"
+                "NoDisplay=false\n"
+                "Comment=Privacy-first voice dictation\n"
+            )
+            logger.info("Autostart enabled: %s", autostart_file)
+        else:
+            if autostart_file.exists():
+                autostart_file.unlink()
+                logger.info("Autostart disabled")
+
+    def _apply_ai_settings(self) -> None:
+        """Persist AI provider+key after wizard close."""
+        if not hasattr(self, "_ai_enabled_row"):
+            return
+        enabled = bool(self._ai_enabled_row.get_active())
+        self._config.ai.enabled = enabled
+        if not enabled:
+            return
+        provider_idx = self._ai_provider_row.get_selected()
+        provider = ["openai", "anthropic", "groq", "litellm"][provider_idx]
+        api_key = self._ai_key_row.get_text().strip()
+        self._config.ai.backend = provider if provider != "litellm" else "openai"
+        if api_key:
+            try:
+                from linux_whispr.secrets import set_api_key, has_keyring
+                if has_keyring():
+                    set_api_key(provider, api_key)
+                    self._config.ai.api_key = ""
+                else:
+                    self._config.ai.api_key = api_key
+            except ImportError:
+                self._config.ai.api_key = api_key
+
     def _on_wizard_complete(self, button: object) -> None:
         """Handle wizard completion."""
+        try:
+            self._apply_ai_settings()
+        except Exception:
+            logger.exception("Failed to apply AI settings")
+        if hasattr(self, "_autostart_row"):
+            try:
+                self._apply_autostart(bool(self._autostart_row.get_active()))
+            except Exception:
+                logger.exception("Failed to apply autostart setting")
+
         self._config.first_run = False
         self._config.save()
         self._completed = True
