@@ -156,6 +156,19 @@ class LinuxWhispr:
         # through the same handler the hotkey uses.
         self._event_bus.on("web.dictation.toggle", lambda *_a, **_kw: self._on_dictation_hotkey())
 
+        # IPC trigger socket (VOXD-trick): external --trigger-record subprocess
+        # hits a Unix socket which emits ipc.dictation.toggle event. Same
+        # handler as hotkey + web-API — three input paths, one effect.
+        self._event_bus.on("ipc.dictation.toggle", lambda *_a, **_kw: self._on_dictation_hotkey())
+        from linux_whispr.ipc import TriggerSocketServer
+        self._trigger_socket = TriggerSocketServer(
+            on_command=lambda cmd: self._event_bus.emit(f"ipc.dictation.{cmd}"),
+        )
+        try:
+            self._trigger_socket.start()
+        except Exception:
+            logger.exception("Failed to start IPC trigger socket — VOXD-trick disabled")
+
         # Setup hotkeys
         self._setup_hotkeys()
         self._check_hotkey_conflicts()
@@ -203,15 +216,18 @@ class LinuxWhispr:
         """Create the LLM backend for AI refinement based on config."""
         import os
 
+        from linux_whispr.secrets import get_api_key
+
         backend = self._config.ai.backend
 
         if backend == "openai":
             from linux_whispr.ai.openai_llm import OpenAILLMBackend
 
+            # Resolution order: env var > keyring > config.toml > LiteLLM-local default
             api_key = (
                 os.environ.get("LITELLM_API_KEY")
                 or os.environ.get("OPENAI_API_KEY")
-                or self._config.ai.api_key
+                or get_api_key("openai", fallback=self._config.ai.api_key)
                 or "sk-litellm-local"
             )
             model = self._config.ai.model or "gpt-4o-mini"
@@ -220,13 +236,21 @@ class LinuxWhispr:
         elif backend == "groq":
             from linux_whispr.ai.groq_llm import GroqLLMBackend
 
-            api_key = os.environ.get("GROQ_API_KEY", "")
+            api_key = (
+                os.environ.get("GROQ_API_KEY")
+                or get_api_key("groq", fallback=self._config.ai.api_key)
+                or ""
+            )
             model = self._config.ai.model or "llama-3.1-8b-instant"
             return GroqLLMBackend(api_key=api_key, model=model)
         elif backend == "anthropic":
             from linux_whispr.ai.anthropic_llm import AnthropicLLMBackend
 
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            api_key = (
+                os.environ.get("ANTHROPIC_API_KEY")
+                or get_api_key("anthropic", fallback=self._config.ai.api_key)
+                or ""
+            )
             model = self._config.ai.model or "claude-3-haiku-20240307"
             return AnthropicLLMBackend(api_key=api_key, model=model)
         elif backend == "local":

@@ -61,6 +61,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--list-models", action="store_true", help="List available Whisper models and exit"
     )
+    parser.add_argument(
+        "--trigger-record",
+        action="store_true",
+        help="Send dictation-toggle to running app via IPC socket and exit (VOXD-trick)",
+    )
     return parser.parse_args()
 
 
@@ -106,6 +111,11 @@ def main() -> None:
     if args.list_models:
         cmd_list_models()
         return
+
+    if args.trigger_record:
+        from linux_whispr.ipc import send_trigger, CMD_TOGGLE
+        ok = send_trigger(CMD_TOGGLE)
+        sys.exit(0 if ok else 1)
 
     logger.info("LinuxWhispr v%s starting...", __version__)
 
