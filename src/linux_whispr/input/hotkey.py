@@ -41,6 +41,27 @@ def create_hotkey_listener(platform: PlatformInfo) -> HotkeyListener:
     """Factory: create the appropriate hotkey listener for the platform."""
     from linux_whispr.platform.detect import DisplayServer
 
+    # Prefer evdev — bypasses X11 / Wayland boundaries (Wayland-native apps
+    # do not propagate keystrokes to Xwayland XGrabKey, so the legacy X11
+    # listener silently misses every key on a Wayland session). Requires
+    # the user to be in the `input` group.
+    try:
+        from linux_whispr.input.evdev_hotkey import EvdevHotkeyListener
+        import evdev as _evdev  # noqa: F401 — probe import
+        from pathlib import Path as _P
+        _by_id = _P("/dev/input/by-id")
+        if _by_id.is_dir():
+            for entry in _by_id.iterdir():
+                if "event-kbd" in entry.name:
+                    try:
+                        if entry.resolve().exists():
+                            logger.info("Using evdev for hotkeys (kernel-layer, X11+Wayland-agnostic)")
+                            return EvdevHotkeyListener()
+                    except OSError:
+                        continue
+    except ImportError:
+        pass
+
     if platform.display_server == DisplayServer.WAYLAND:
         try:
             from linux_whispr.input.wayland_hotkey import WaylandHotkeyListener

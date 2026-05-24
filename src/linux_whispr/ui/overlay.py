@@ -109,6 +109,13 @@ class Overlay:
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
+        # GTK4 requires explicit init before creating widgets outside a
+        # Gtk.Application context. The wizard runs inside Adw.Application
+        # (which inits GTK) but app.setup() creates this overlay later from
+        # plain code, so we init here.
+        if not Gtk.init_check():
+            raise RuntimeError("Gtk.init_check failed — no display reachable")
+
         # Compute pill width to fit the longest label
         longest = max(_STATE_LABELS.values(), key=len)
         char_w = _FONT_SIZE * 0.62

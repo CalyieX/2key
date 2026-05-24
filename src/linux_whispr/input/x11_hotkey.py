@@ -33,7 +33,7 @@ def _parse_hotkey(hotkey_str: str) -> tuple[list[str], str]:
     modifiers: list[str] = []
     remaining = hotkey_str
 
-    # Extract <Modifier> patterns
+    # Extract <Modifier> patterns (Gnome accelerator syntax)
     for match in re.finditer(r"<(\w+)>", hotkey_str):
         mod = match.group(1).lower()
         if mod in _MODIFIER_MAP:
@@ -41,6 +41,25 @@ def _parse_hotkey(hotkey_str: str) -> tuple[list[str], str]:
         remaining = remaining.replace(match.group(0), "")
 
     key = remaining.strip()
+
+    # Accept plus-separated form too: "ctrl+super" / "ctrl+alt+d".
+    # All-modifier combos turn the LAST modifier into its left-key form
+    # (Super_L / Control_L / Alt_L) as the X11 grab target.
+    _MOD_KEYSYM = {
+        "super": "Super_L", "meta": "Super_L", "hyper": "Hyper_L",
+        "ctrl": "Control_L", "control": "Control_L",
+        "alt": "Mod1_L", "shift": "Shift_L",
+    }
+    if not modifiers and "+" in key:
+        parts = [p.strip().lower() for p in key.split("+") if p.strip()]
+        if parts and all(p in _MODIFIER_MAP for p in parts):
+            modifiers = parts[:-1]
+            key = _MOD_KEYSYM.get(parts[-1], parts[-1])
+        else:
+            modifiers = [p for p in parts if p in _MODIFIER_MAP]
+            non_mods = [p for p in parts if p not in _MODIFIER_MAP]
+            key = non_mods[-1] if non_mods else parts[-1]
+
     if not key:
         raise ValueError(f"No key found in hotkey string: {hotkey_str!r}")
 

@@ -289,4 +289,7 @@ class SetupWizard:
         logger.info("Setup wizard completed")
 
         if self._window is not None:
-            self._window.close()  # type: ignore[union-attr]
+            app = self._window.get_application()  # type: ignore[union-attr]
+            self._window.destroy()  # type: ignore[union-attr]
+            if app is not None:
+                app.quit()

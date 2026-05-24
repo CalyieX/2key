@@ -139,18 +139,40 @@ class LinuxWhispr:
         # Initialize AI refinement (if configured)
         self._setup_ai_refinement()
 
-        # Initialize overlay
+        # Initialize overlay (decoration; degrade gracefully if GTK cant init)
         self._overlay = Overlay(self._event_bus)
-        self._overlay.setup()
+        try:
+            self._overlay.setup()
+        except Exception as exc:
+            logger.warning("Overlay setup failed (GTK init issue); continuing without overlay: %s", exc)
+            self._overlay._gtk_available = False
 
         # Initialize system tray
         self._setup_tray()
 
         # Register event handlers
         self._event_bus.on("audio.ready", self._on_audio_ready)
+        # Web-API dictation toggle: route POST /api/dictation/toggle
+        # through the same handler the hotkey uses.
+        self._event_bus.on("web.dictation.toggle", lambda *_a, **_kw: self._on_dictation_hotkey())
 
         # Setup hotkeys
         self._setup_hotkeys()
+        self._check_hotkey_conflicts()
+
+        # Pre-warm STT: load the model now (off-thread) so the first hotkey
+        # press doesn't pay the 1-5 second model-load latency. Falls back to
+        # lazy-load if the eager warmup fails for any reason.
+        if self._stt is not None and not self._stt.is_loaded:
+            import threading as _t
+            def _warmup() -> None:
+                try:
+                    logger.info("Pre-warming STT model in background...")
+                    self._stt.load()
+                    logger.info("STT model pre-warmed")
+                except Exception:
+                    logger.exception("STT pre-warm failed; will lazy-load on first use")
+            _t.Thread(target=_warmup, daemon=True, name="stt-prewarm").start()
 
         # Start web dashboard (if enabled)
         self._setup_web_dashboard()
@@ -307,6 +329,48 @@ class LinuxWhispr:
             self._tray.setup()
         except Exception:
             logger.debug("System tray initialization failed", exc_info=True)
+
+
+    def _check_hotkey_conflicts(self) -> None:
+        """Warn at startup when the configured hotkey is also claimed by GNOME.
+
+        gsettings binds for org.gnome.desktop.wm.keybindings,
+        org.gnome.mutter.keybindings, and org.gnome.shell.keybindings can
+        steal our hotkey before evdev sees it. We probe the well-known
+        binding-schemas and log a clear warning so the user knows why
+        nothing fires.
+        """
+        import subprocess  # noqa: PLC0415 — only when probing
+        hotkey = self._config.hotkey.dictation
+        if not hotkey:
+            return
+        probe = hotkey.lower().replace("<", "").replace(">", "").replace("+", "")
+        schemas = (
+            "org.gnome.desktop.wm.keybindings",
+            "org.gnome.mutter.keybindings",
+            "org.gnome.shell.keybindings",
+            "org.gnome.mutter",
+        )
+        hits: list[str] = []
+        for schema in schemas:
+            try:
+                out = subprocess.check_output(
+                    ["gsettings", "list-recursively", schema],
+                    text=True, timeout=2, stderr=subprocess.DEVNULL,
+                )
+            except Exception:  # noqa: BLE001 — gsettings may be missing
+                continue
+            for line in out.splitlines():
+                line_l = line.lower().replace("<", "").replace(">", "").replace("+", "")
+                if probe and probe in line_l:
+                    hits.append(line.strip())
+        if hits:
+            logger.warning(
+                "Hotkey %r may collide with %d GNOME binding(s): %s",
+                hotkey, len(hits), "; ".join(hits[:3]),
+            )
+        else:
+            logger.info("No GNOME binding collision detected for %r", hotkey)
 
     def _setup_hotkeys(self) -> None:
         """Register global hotkeys."""

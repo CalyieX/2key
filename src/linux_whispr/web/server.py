@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from linux_whispr.constants import VERSION
 from linux_whispr.web.api.config_routes import router as config_router
+from linux_whispr.web.api.dictation_routes import router as dictation_router
 from linux_whispr.web.api.dictionary_routes import router as dictionary_router
 from linux_whispr.web.api.history_routes import router as history_router
 from linux_whispr.web.api.models_routes import router as models_router
@@ -38,6 +39,7 @@ app.add_middleware(
 
 # API routes
 app.include_router(status_router, prefix="/api")
+app.include_router(dictation_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(dictionary_router, prefix="/api")
