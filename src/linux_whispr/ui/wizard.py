@@ -62,10 +62,10 @@ class SetupWizard:
 
         # Welcome
         console.print(Panel(
-            "[bold]Welcome to LinuxWhispr![/bold]\n\n"
+            "[bold]Welcome to K&K Voice![/bold]\n\n"
             "Privacy-first voice dictation for Linux.\n"
             "Let's set up your system for voice dictation.",
-            title="LinuxWhispr Setup",
+            title="K&K Voice Setup",
             border_style="blue",
         ))
 
@@ -122,7 +122,7 @@ class SetupWizard:
             f"[bold green]Setup complete![/bold green]\n\n"
             f"Press [cyan]{self._config.hotkey.dictation}[/cyan] to start dictating.\n"
             f"Model: [cyan]{self._config.stt.model}[/cyan]\n\n"
-            f"LinuxWhispr is now running in the background.",
+            f"K&amp;K Voice is now running in the background.",
             title="Ready",
             border_style="green",
         ))
@@ -174,7 +174,7 @@ class SetupWizard:
 
         def on_activate(app: Adw.Application) -> None:
             window = Adw.Window(
-                title="LinuxWhispr Setup",
+                title="K&K Voice Setup",
                 default_width=500,
                 default_height=400,
                 application=app,
@@ -231,7 +231,7 @@ class SetupWizard:
         from gi.repository import Adw, Gtk
 
         page = Adw.StatusPage(
-            title="Welcome to LinuxWhispr",
+            title="Welcome to K&K Voice",
             description=(
                 "Privacy-first voice dictation for Linux.\n\n"
                 "Let's get you set up in just a few steps."
@@ -346,10 +346,10 @@ class SetupWizard:
         page = Adw.StatusPage(
             title="Quick Hotkey via Custom Shortcut",
             description=(
-                "Recommended: bind a system shortcut to launch K&K Voice.\n\n"
-                "GNOME: Settings > Keyboard > View and Customize Shortcuts > "
-                "Custom Shortcuts > +\n"
-                "KDE: System Settings > Shortcuts > Custom Shortcuts > Edit > New\n\n"
+                "Recommended: bind a system shortcut to launch K&amp;K Voice.\n\n"
+                "GNOME: Settings &gt; Keyboard &gt; View and Customize Shortcuts &gt; "
+                "Custom Shortcuts &gt; +\n"
+                "KDE: System Settings &gt; Shortcuts &gt; Custom Shortcuts &gt; Edit &gt; New\n\n"
                 "Use this command:"
             ),
             icon_name="preferences-desktop-keyboard-symbolic",
@@ -375,7 +375,7 @@ class SetupWizard:
 
         info_row = Adw.ActionRow(
             title="What this does",
-            subtitle="OS-level shortcut > kk-voice --trigger-record > IPC socket > dictation toggle. Zero permissions needed.",
+            subtitle="OS-level shortcut &gt; kk-voice --trigger-record &gt; IPC socket &gt; dictation toggle. Zero permissions needed.",
         )
         group.add(info_row)
 
@@ -390,13 +390,13 @@ class SetupWizard:
 
         page = Adw.StatusPage(
             title="Almost done!",
-            description="Start K&K Voice automatically when you log in?",
+            description="Start K&amp;K Voice automatically when you log in?",
             icon_name="emblem-ok-symbolic",
         )
 
         group = Adw.PreferencesGroup()
         autostart_row = Adw.SwitchRow(
-            title="Launch K&K Voice on login",
+            title="Launch K&amp;K Voice on login",
             subtitle="Creates ~/.config/autostart/kk-voice.desktop",
             active=self._autostart_currently_enabled(),
         )
