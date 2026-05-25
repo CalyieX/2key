@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from typing import TYPE_CHECKING
 import pathlib
 
@@ -132,7 +131,6 @@ class SetupWizard:
     def _cli_mic_test(self, console: object) -> None:
         """Quick CLI microphone test."""
         try:
-            import time
 
             import numpy as np
             import sounddevice as sd
@@ -228,7 +226,7 @@ class SetupWizard:
 
     def _build_welcome_page(self) -> object:
         """Build the welcome page widget."""
-        from gi.repository import Adw, Gtk
+        from gi.repository import Adw
 
         page = Adw.StatusPage(
             title="Welcome to K&K Voice",
@@ -239,6 +237,24 @@ class SetupWizard:
             icon_name="audio-input-microphone-symbolic",
         )
         return page
+
+    @staticmethod
+    def _wrap_in_scroll(child: object) -> object:
+        """Wrap a wizard-page box in a ScrolledWindow so content scrolls
+        instead of cropping when the Adw.Carousel viewport is narrow.
+
+        Fix for Layout-Bug: Adw.StatusPage + Adw.PreferencesGroup with 3+
+        rows cropped the StatusPage title/description on AI/VOXD/Autostart
+        pages. ScrolledWindow lets the user scroll vertically when needed.
+        """
+        from gi.repository import Gtk
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_hexpand(True)
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(child)
+        return scroll
 
     def _build_model_page(self) -> object:
         """Build the model selection page widget."""
@@ -267,7 +283,7 @@ class SetupWizard:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.append(page)
         box.append(group)
-        return box
+        return self._wrap_in_scroll(box)
 
     def _build_hotkey_page(self) -> object:
         """Build the hotkey configuration page widget."""
@@ -287,7 +303,7 @@ class SetupWizard:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.append(page)
         box.append(group)
-        return box
+        return self._wrap_in_scroll(box)
 
     # ---------------- New pages added in Phase-2c polish ----------------
 
@@ -337,7 +353,7 @@ class SetupWizard:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.append(page)
         box.append(group)
-        return box
+        return self._wrap_in_scroll(box)
 
     def _build_voxd_page(self) -> object:
         """VOXD-trick: explain how to set up an OS-level Custom-Shortcut."""
@@ -382,7 +398,7 @@ class SetupWizard:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.append(page)
         box.append(group)
-        return box
+        return self._wrap_in_scroll(box)
 
     def _build_autostart_page(self) -> object:
         """Autostart toggle + final Done button."""
@@ -412,7 +428,7 @@ class SetupWizard:
         box.append(page)
         box.append(group)
         box.append(done_button)
-        return box
+        return self._wrap_in_scroll(box)
 
     def _autostart_currently_enabled(self) -> bool:
         """Check whether the autostart .desktop entry exists."""
